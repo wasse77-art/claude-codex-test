@@ -11,7 +11,7 @@ GitHub × Claude Code × Codex 連携テスト中
 - [x] README.md・status.md の初期作成
 
 ## Codexへの確認事項
-- [ ] Codex がこのリポジトリを正しく読めるか確認
+- [x] Codex がこのリポジトリを正しく読めるか確認
 - [ ] Codex からのコメント・レビューを受け取る
 
 ## 各プロジェクトのObsidian記録場所
