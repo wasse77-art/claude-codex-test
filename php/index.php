@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Web画像スクレイパー</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -97,8 +98,14 @@
       display: flex; align-items: center; gap: 8px;
       font-weight: 600; color: #4a5568; cursor: pointer; user-select: none;
     }
-    .select-all-label input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; accent-color: #667eea; }
+    .select-all-label input[type="checkbox"] {
+      width: 20px; height: 20px; cursor: pointer; accent-color: #667eea;
+    }
     .sel-info { font-size: .9em; color: #718096; }
+    .drag-hint {
+      font-size: .78em; color: #a0aec0;
+      display: flex; align-items: center; gap: 4px;
+    }
 
     /* ── Image grid ──────────────────────────── */
     .image-grid {
@@ -107,8 +114,14 @@
       gap: 14px;
       margin-bottom: 18px;
     }
+    /* During drag: crosshair cursor on everything */
+    .image-grid.is-dragging,
+    .image-grid.is-dragging * { cursor: crosshair !important; }
+
     .img-card {
-      background: #fff; border-radius: 10px; overflow: hidden;
+      background: #fff;
+      border-radius: 10px;
+      overflow: hidden;
       box-shadow: 0 2px 6px rgba(0,0,0,.08);
       cursor: pointer;
       transition: transform .18s, box-shadow .18s, outline .1s;
@@ -121,6 +134,7 @@
     }
     .img-thumb img {
       position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+      pointer-events: none; /* prevent native img drag */
     }
     .img-thumb .img-error {
       position: absolute; inset: 0;
@@ -168,6 +182,46 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ── Progress overlay ────────────────────── */
+    .progress-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.6);
+      z-index: 3000;
+      align-items: center; justify-content: center;
+    }
+    .progress-overlay.active { display: flex; }
+    .progress-box {
+      background: #fff;
+      border-radius: 16px;
+      padding: 36px 32px;
+      max-width: 400px; width: 90%;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0,0,0,.3);
+    }
+    .progress-phase {
+      font-size: 1.05em; font-weight: 700; color: #2d3748; margin-bottom: 22px;
+    }
+    .progress-bar-wrap {
+      background: #e2e8f0; border-radius: 99px;
+      height: 14px; overflow: hidden; margin-bottom: 14px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      border-radius: 99px;
+      width: 0%;
+      transition: width .2s ease;
+    }
+    .progress-count {
+      font-size: 1.6em; font-weight: 700; color: #667eea; margin-bottom: 8px;
+    }
+    .progress-filename {
+      font-size: .78em; color: #a0aec0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      max-width: 320px; margin: 0 auto;
+    }
+
     /* ── Modal ───────────────────────────────── */
     .modal-overlay {
       display: none; position: fixed; inset: 0;
@@ -192,6 +246,7 @@
       background: #2d3748; color: #fff;
       padding: 11px 24px; border-radius: 8px; font-size: .9em;
       z-index: 2000; transition: transform .3s ease; pointer-events: none;
+      white-space: nowrap;
     }
     .toast.show { transform: translateX(-50%) translateY(0); }
 
@@ -200,25 +255,20 @@
 
     @media (max-width: 640px) {
       .url-row { flex-direction: column; }
+      .drag-hint { display: none; }
     }
-
     @media (max-width: 480px) {
       header { padding: 14px 16px; }
       header h1 { font-size: 1.35em; }
       header p  { font-size: .78em; }
-
       .container { padding: 10px; }
       .card { padding: 14px 16px; border-radius: 10px; margin-bottom: 12px; }
       .card h2 { font-size: .92em; }
-
       .image-grid { grid-template-columns: repeat(2, 1fr); gap: 9px; }
-
       .img-chk { width: 26px; height: 26px; top: 6px; left: 6px; }
       .select-all-label input[type="checkbox"] { width: 24px; height: 24px; }
-
       .stats-group { gap: 18px; }
       .stat-value  { font-size: 1.6em; }
-
       .action-bar {
         position: fixed; bottom: 0; left: 0; right: 0;
         border-radius: 0; margin-bottom: 0;
@@ -230,9 +280,7 @@
       }
       .action-bar .btn { width: 100%; padding: 15px; font-size: 1em; }
       body.has-images { padding-bottom: calc(140px + env(safe-area-inset-bottom)); }
-
       .toast { bottom: calc(160px + env(safe-area-inset-bottom)); }
-
       .modal-overlay { align-items: flex-end; }
       .modal {
         border-radius: 20px 20px 0 0; width: 100%; max-width: 100%;
@@ -240,7 +288,6 @@
         padding-bottom: calc(24px + env(safe-area-inset-bottom));
       }
     }
-
     @media (hover: none) {
       .img-card:hover { transform: none; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
       .btn:hover { transform: none !important; box-shadow: none !important; }
@@ -300,6 +347,7 @@
       <input type="checkbox" id="selectAllChk" onchange="toggleSelectAll(this)">
       全て選択 / 全て解除
     </label>
+    <span class="drag-hint">💡 ドラッグで範囲選択（PC）</span>
     <span class="sel-info" id="selInfo">0枚選択中</span>
   </div>
 
@@ -320,6 +368,18 @@
 
 </div>
 
+<!-- Progress overlay -->
+<div class="progress-overlay" id="progressOverlay">
+  <div class="progress-box">
+    <div class="progress-phase"    id="progressPhase">画像をダウンロード中...</div>
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-fill" id="progressBarFill"></div>
+    </div>
+    <div class="progress-count"    id="progressCount">0 / 0</div>
+    <div class="progress-filename" id="progressFilename"></div>
+  </div>
+</div>
+
 <!-- Modal -->
 <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
   <div class="modal">
@@ -336,6 +396,21 @@
   /* ─── State ──────────────────────────────────────────────── */
   let allImages    = [];
   let sessionCount = 0;
+
+  /* ─── Drag-to-select state ───────────────────────────────── */
+  let isDragging  = false;
+  let dragMode    = null;   // 'select' | 'deselect'
+  let dragStartId = null;
+
+  document.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging  = false;
+    dragMode    = null;
+    dragStartId = null;
+    document.getElementById('imageGrid').classList.remove('is-dragging');
+    document.body.style.userSelect = '';
+  });
+  document.addEventListener('dragstart', e => e.preventDefault());
 
   /* ─── Boot ───────────────────────────────────────────────── */
   document.getElementById('urlInput').addEventListener('keydown', e => {
@@ -355,20 +430,17 @@
     return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   }
 
-  function toast(msg, ms = 3000) {
+  function toast(msg, ms = 3500) {
     const el = document.getElementById('toast');
     el.textContent = msg;
     el.classList.add('show');
     setTimeout(() => el.classList.remove('show'), ms);
   }
-
   function showError(msg) {
     const el = document.getElementById('errorMsg');
-    el.textContent = msg;
-    el.style.display = 'block';
+    el.textContent = msg; el.style.display = 'block';
   }
   function hideError() { document.getElementById('errorMsg').style.display = 'none'; }
-
   function setLoading(on) {
     document.getElementById('loading').classList.toggle('active', on);
     document.getElementById('scrapeBtn').disabled = on;
@@ -388,12 +460,10 @@
   function updateStats() {
     const total    = allImages.length;
     const selected = allImages.filter(i => i.selected).length;
-
     document.getElementById('totalCount').textContent    = total;
     document.getElementById('selectedCount').textContent = selected;
     document.getElementById('sessionCount').textContent  = sessionCount;
     document.getElementById('selInfo').textContent       = `${selected}枚選択中`;
-
     const chk = document.getElementById('selectAllChk');
     if (total === 0)             { chk.indeterminate = false; chk.checked = false; }
     else if (selected === total) { chk.indeterminate = false; chk.checked = true;  }
@@ -422,8 +492,26 @@
       const card = document.createElement('div');
       card.className = `img-card${img.selected ? ' selected' : ''}`;
       card.id = `card_${img.id}`;
-      card.addEventListener('click', e => {
-        if (e.target.type !== 'checkbox') toggleById(img.id, null);
+
+      /* ── Drag-to-select (PC) ──────────────── */
+      card.addEventListener('mousedown', e => {
+        if (e.button !== 0 || e.target.type === 'checkbox') return;
+        e.preventDefault();
+
+        const newState = !img.selected;
+        isDragging  = true;
+        dragMode    = newState ? 'select' : 'deselect';
+        dragStartId = img.id;
+
+        document.getElementById('imageGrid').classList.add('is-dragging');
+        document.body.style.userSelect = 'none';
+
+        toggleById(img.id, newState);
+      });
+
+      card.addEventListener('mouseover', () => {
+        if (!isDragging || img.id === dragStartId) return;
+        toggleById(img.id, dragMode === 'select');
       });
 
       card.innerHTML = `
@@ -508,32 +596,100 @@
     setLoading(false);
   }
 
-  /* ─── ZIP download ───────────────────────────────────────── */
+  /* ─── Progress helpers ───────────────────────────────────── */
+  function showProgress(phase, current, total) {
+    document.getElementById('progressPhase').textContent    = phase;
+    document.getElementById('progressBarFill').style.width  = '0%';
+    document.getElementById('progressCount').textContent    = `${current} / ${total}`;
+    document.getElementById('progressFilename').textContent = '';
+    document.getElementById('progressOverlay').classList.add('active');
+  }
+
+  function updateProgress(current, total, filename) {
+    const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+    document.getElementById('progressBarFill').style.width  = pct + '%';
+    document.getElementById('progressCount').textContent    = `${current} / ${total} (${pct}%)`;
+    document.getElementById('progressFilename').textContent = filename || '';
+  }
+
+  function hideProgress() {
+    document.getElementById('progressOverlay').classList.remove('active');
+  }
+
+  /* ─── ZIP download (client-side JSZip + proxy) ───────────── */
   async function downloadZip() {
     const selected = allImages.filter(i => i.selected);
     if (!selected.length) { toast('画像を1枚以上選択してください'); return false; }
 
-    toast('ZIPファイルを作成中…', 8000);
+    const total  = selected.length;
+    const padLen = String(total).length;
+
+    showProgress('画像をダウンロード中...', 0, total);
+
+    const zip        = new JSZip();
+    const nameCounts = {};
+    let   okCount    = 0;
+
+    for (let i = 0; i < selected.length; i++) {
+      const img = selected[i];
+      updateProgress(i, total, img.filename);
+
+      try {
+        const res = await fetch('proxy.php?url=' + encodeURIComponent(img.url));
+        if (!res.ok) continue;
+        const blob = await res.blob();
+
+        // Build filename
+        let fname = img.filename || 'image';
+        const dot  = fname.lastIndexOf('.');
+        let base   = dot >= 0 ? fname.slice(0, dot)  : fname;
+        let ext    = dot >= 0 ? fname.slice(dot + 1) : 'jpg';
+
+        // Deduplicate within this batch
+        const key = `${base}.${ext}`;
+        if (key in nameCounts) {
+          nameCounts[key]++;
+          fname = `${base}_${nameCounts[key]}.${ext}`;
+        } else {
+          nameCounts[key] = 0;
+          fname = key;
+        }
+
+        // Zero-padded prefix so files sort in collection order after extraction
+        const prefix = String(i + 1).padStart(padLen, '0');
+        zip.file(`${prefix}_${fname}`, blob);
+        okCount++;
+
+      } catch (e) {
+        // skip failed image, continue
+      }
+    }
+
+    // ZIP generation phase
+    document.getElementById('progressPhase').textContent   = 'ZIPファイルを生成中...';
+    document.getElementById('progressFilename').textContent = '';
 
     try {
-      const res = await fetch('download.php', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({images: selected}),
+      const zipBlob = await zip.generateAsync({type: 'blob'}, meta => {
+        const p = meta.percent.toFixed(0);
+        document.getElementById('progressBarFill').style.width = p + '%';
+        document.getElementById('progressCount').textContent   = `ZIP生成: ${p}%`;
       });
-      if (!res.ok) throw new Error('サーバーエラー');
 
-      const blob = await res.blob();
-      const a    = Object.assign(document.createElement('a'), {
-        href:     URL.createObjectURL(blob),
+      const a = Object.assign(document.createElement('a'), {
+        href:     URL.createObjectURL(zipBlob),
         download: 'scraped_images.zip',
       });
       a.click();
       URL.revokeObjectURL(a.href);
-      toast(`✅ ${selected.length}枚の画像をZIPで保存しました`);
+
+      hideProgress();
+      toast(`✅ ${okCount}枚の画像をZIPで保存しました`);
       return true;
-    } catch (err) {
-      toast('❌ エラー: ' + err.message);
+
+    } catch (e) {
+      hideProgress();
+      toast('❌ ZIPの生成に失敗しました: ' + e.message);
       return false;
     }
   }
@@ -592,7 +748,6 @@
   /* ─── Action: Continue ───────────────────────────────────── */
   function onContinueClick() {
     const cnt = allImages.filter(i => i.selected).length;
-
     if (cnt > 0) {
       showModal(
         '収集を続ける',
