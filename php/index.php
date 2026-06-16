@@ -297,6 +297,46 @@
       .img-card:hover { transform: none; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
       .btn:hover { transform: none !important; box-shadow: none !important; }
     }
+
+    /* ── Analysis cards ──────────────────────── */
+    .analyze-result-card {
+      background: #fff; border-radius: 10px; padding: 16px 18px;
+      box-shadow: 0 2px 6px rgba(0,0,0,.08); margin-bottom: 12px;
+      border-left: 5px solid #cbd5e0;
+    }
+    .analyze-result-card.status-green  { border-left-color: #48bb78; }
+    .analyze-result-card.status-yellow { border-left-color: #ecc94b; }
+    .analyze-result-card.status-red    { border-left-color: #fc8181; }
+
+    .ar-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .ar-icon   { font-size: 1.5em; flex-shrink: 0; }
+    .ar-label  { font-size: .97em; font-weight: 700; color: #2d3748; flex: 1; }
+    .ar-dl-icon{ font-size: 1.1em; flex-shrink: 0; }
+
+    .ar-detail { font-size: .82em; color: #718096; margin-bottom: 8px; }
+    .ar-count-badge {
+      display: inline-block; background: #667eea; color: #fff;
+      font-size: .7em; font-weight: 700; padding: 2px 8px; border-radius: 4px; margin-bottom: 8px;
+    }
+    .ar-urls { margin: 6px 0; }
+    .ar-url-item {
+      font-size: .7em; color: #4a5568; background: #f7fafc;
+      padding: 3px 8px; border-radius: 4px; margin-bottom: 3px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      display: block;
+    }
+    .ar-dl-note {
+      font-size: .82em; padding: 8px 10px; border-radius: 6px; line-height: 1.55; margin-top: 6px;
+    }
+    .status-green  .ar-dl-note { background: #f0fff4; color: #276749; }
+    .status-yellow .ar-dl-note { background: #fffff0; color: #744210; }
+    .status-red    .ar-dl-note { background: #fff5f5; color: #c53030; }
+
+    .analyze-summary {
+      text-align: center; padding: 14px 18px; font-weight: 600; color: #4a5568;
+      background: #fff; border-radius: 10px; margin-bottom: 14px;
+      box-shadow: 0 2px 6px rgba(0,0,0,.07); font-size: .92em; line-height: 1.6;
+    }
   </style>
 </head>
 <body>
@@ -310,8 +350,9 @@
 
   <!-- Tabs -->
   <div class="tabs">
-    <button class="tab-btn active" data-tab="image" onclick="switchTab('image')">🖼️ 画像スクレイパー</button>
-    <button class="tab-btn"        data-tab="video" onclick="switchTab('video')">🎬 動画スクレイパー</button>
+    <button class="tab-btn active" data-tab="image"   onclick="switchTab('image')">🖼️ 画像スクレイパー</button>
+    <button class="tab-btn"        data-tab="video"   onclick="switchTab('video')">🎬 動画スクレイパー</button>
+    <button class="tab-btn"        data-tab="analyze" onclick="switchTab('analyze')">🔍 動画分析</button>
   </div>
 
   <!-- ════════ IMAGE SECTION ════════ -->
@@ -414,6 +455,44 @@
 
   </div><!-- /videoSection -->
 
+  <!-- ════════ ANALYZE SECTION ════════ -->
+  <div id="analyzeSection" style="display:none">
+
+    <div class="card">
+      <h2>📌 分析するページのURLを入力</h2>
+      <div class="url-row">
+        <input type="url" class="url-input" id="analyzeUrlInput"
+               placeholder="https://example.com"
+               autocomplete="off" inputmode="url" enterkeyhint="go">
+        <button class="btn btn-purple" id="analyzeBtn" onclick="startAnalysis()">
+          分析開始
+        </button>
+      </div>
+      <div class="error-msg" id="analyzeErrorMsg"></div>
+    </div>
+
+    <div class="notice" id="analyzeNotice" style="display:block">
+      ℹ️ このページに含まれる動画の種類（HTML5直接埋め込み・HLS・DASH・YouTube等）を分析します。<br>
+      JavaScriptで動的に生成されるコンテンツは検出できない場合があります。
+    </div>
+
+    <div class="loading" id="analyzeLoading">
+      <div class="spinner"></div>
+      <p>ページを分析中...</p>
+    </div>
+
+    <div id="analyzeResults" style="display:none">
+      <div class="analyze-summary" id="analyzeSummary"></div>
+      <div id="analyzeFindingsList"></div>
+    </div>
+
+    <div class="empty-state" id="analyzeEmptyState">
+      <div class="empty-icon">🔍</div>
+      <p>URLを入力して動画形式を分析してください</p>
+    </div>
+
+  </div><!-- /analyzeSection -->
+
 </div><!-- /container -->
 
 <!-- Progress overlay (shared) -->
@@ -463,16 +542,18 @@
   /* ════════ Tab switching ════════ */
 
   function switchTab(tab) {
-    ['image', 'video'].forEach(t => {
+    ['image', 'video', 'analyze'].forEach(t => {
       document.getElementById(t + 'Section').style.display = t === tab ? '' : 'none';
     });
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     if (tab === 'image') {
       document.body.classList.toggle('has-images', allImages.length > 0);
       document.body.classList.remove('has-videos');
-    } else {
+    } else if (tab === 'video') {
       document.body.classList.toggle('has-videos', allVideos.length > 0);
       document.body.classList.remove('has-images');
+    } else {
+      document.body.classList.remove('has-images', 'has-videos');
     }
   }
 
@@ -963,6 +1044,91 @@
   function addMoreVideos() {
     document.querySelector('#videoSection .card').scrollIntoView({behavior: 'smooth'});
     setTimeout(() => document.getElementById('videoUrlInput').focus(), 400);
+  }
+
+  /* ════════════════════════════════
+     VIDEO ANALYZER
+  ════════════════════════════════ */
+
+  document.getElementById('analyzeUrlInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') startAnalysis();
+  });
+
+  function showAnalyzeError(msg) {
+    const el = document.getElementById('analyzeErrorMsg');
+    el.textContent = msg; el.style.display = 'block';
+  }
+  function hideAnalyzeError() { document.getElementById('analyzeErrorMsg').style.display = 'none'; }
+  function setAnalyzeLoading(on) {
+    document.getElementById('analyzeLoading').classList.toggle('active', on);
+    document.getElementById('analyzeBtn').disabled = on;
+  }
+
+  async function startAnalysis() {
+    const url = document.getElementById('analyzeUrlInput').value.trim();
+    if (!url) { showAnalyzeError('URLを入力してください'); return; }
+    hideAnalyzeError();
+    document.getElementById('analyzeResults').style.display = 'none';
+    document.getElementById('analyzeEmptyState').style.display = 'none';
+    setAnalyzeLoading(true);
+    try {
+      const res  = await fetch('video_analyze.php', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({url}),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        showAnalyzeError(data.error || '分析に失敗しました');
+        document.getElementById('analyzeEmptyState').style.display = 'block';
+      } else {
+        renderAnalysisResults(data);
+      }
+    } catch (err) { showAnalyzeError('ネットワークエラー: ' + err.message); document.getElementById('analyzeEmptyState').style.display = 'block'; }
+    setAnalyzeLoading(false);
+  }
+
+  function renderAnalysisResults(data) {
+    document.getElementById('analyzeSummary').textContent =
+      `📊 ${data.summary}（ページタイトル: ${data.page_title}）`;
+
+    const list = document.getElementById('analyzeFindingsList');
+    list.innerHTML = '';
+
+    if (!data.findings || data.findings.length === 0) {
+      document.getElementById('analyzeEmptyState').style.display = 'block';
+      document.getElementById('analyzeResults').style.display = 'none';
+      return;
+    }
+
+    data.findings.forEach(f => {
+      const card = document.createElement('div');
+      card.className = `analyze-result-card status-${f.status}`;
+
+      let urlsHtml = '';
+      if (f.sample_urls && f.sample_urls.length) {
+        const items = f.sample_urls.map(u =>
+          `<span class="ar-url-item" title="${esc(u)}">${esc(u)}</span>`
+        ).join('');
+        const more = f.count > f.sample_urls.length
+          ? `<span class="ar-url-item">…他 ${f.count - f.sample_urls.length} 件</span>` : '';
+        urlsHtml = `<div class="ar-urls">${items}${more}</div>`;
+      }
+
+      card.innerHTML = `
+        <div class="ar-header">
+          <span class="ar-icon">${f.icon}</span>
+          <span class="ar-label">${esc(f.label)}</span>
+          <span class="ar-dl-icon">${f.dl_icon}</span>
+        </div>
+        <div class="ar-detail">${esc(f.detail)}</div>
+        <span class="ar-count-badge">${f.count}件検出</span>
+        ${urlsHtml}
+        <div class="ar-dl-note">${esc(f.dl_note)}</div>`;
+      list.appendChild(card);
+    });
+
+    document.getElementById('analyzeResults').style.display = 'block';
+    document.getElementById('analyzeEmptyState').style.display = 'none';
   }
 </script>
 </body>
