@@ -101,7 +101,7 @@
     .stat-label { font-size: .75em; color: #718096; margin-top: 3px; }
 
     /* ── Controls bar ────────────────────────── */
-    .controls-bar { display: none; align-items: center; justify-content: space-between; }
+    .controls-bar { display: none; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
     .select-all-label {
       display: flex; align-items: center; gap: 8px;
       font-weight: 600; color: #4a5568; cursor: pointer; user-select: none;
@@ -109,6 +109,19 @@
     .select-all-label input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; accent-color: #667eea; }
     .sel-info  { font-size: .9em; color: #718096; }
     .drag-hint { font-size: .78em; color: #a0aec0; }
+    .controls-right { display: flex; align-items: center; gap: 12px; }
+
+    /* ── Column picker ───────────────────────── */
+    .col-picker { display: flex; align-items: center; gap: 4px; }
+    .col-picker-label { font-size: .72em; color: #a0aec0; margin-right: 2px; white-space: nowrap; }
+    .col-btn {
+      width: 28px; height: 28px; border: 1.5px solid #cbd5e0; border-radius: 6px;
+      background: transparent; font-size: .78em; font-weight: 700; color: #718096;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: all .15s; padding: 0;
+    }
+    .col-btn.active { background: #667eea; border-color: #667eea; color: #fff; }
+    .col-btn:hover:not(.active) { border-color: #667eea; color: #667eea; }
 
     /* ── Image grid ──────────────────────────── */
     .image-grid {
@@ -118,6 +131,10 @@
     }
     .image-grid.is-dragging,
     .image-grid.is-dragging * { cursor: crosshair !important; }
+    .image-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+    .image-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .image-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+    .image-grid.cols-5 { grid-template-columns: repeat(5, 1fr); }
 
     .img-card {
       background: #fff; border-radius: 10px; overflow: hidden;
@@ -271,7 +288,7 @@
       .container { padding: 10px; }
       .card { padding: 14px 16px; border-radius: 10px; margin-bottom: 12px; }
       .card h2 { font-size: .92em; }
-      .image-grid { grid-template-columns: repeat(2, 1fr); gap: 9px; }
+      .image-grid { gap: 9px; }
       .img-chk { width: 26px; height: 26px; top: 6px; left: 6px; }
       .select-all-label input[type="checkbox"] { width: 24px; height: 24px; }
       .stats-group { gap: 18px; }
@@ -393,9 +410,18 @@
         <input type="checkbox" id="selectAllChk" onchange="toggleSelectAll(this)">
         全て選択 / 全て解除
       </label>
-      <span class="drag-hint hint-pc">💡 ドラッグ or Shift+クリックで範囲選択</span>
-      <span class="drag-hint hint-sp">💡 スワイプで複数選択</span>
-      <span class="sel-info" id="selInfo">0枚選択中</span>
+      <div class="col-picker">
+        <span class="col-picker-label">列数:</span>
+        <button class="col-btn" data-cols="2" onclick="setCols(2)">2</button>
+        <button class="col-btn" data-cols="3" onclick="setCols(3)">3</button>
+        <button class="col-btn" data-cols="4" onclick="setCols(4)">4</button>
+        <button class="col-btn" data-cols="5" onclick="setCols(5)">5</button>
+      </div>
+      <div class="controls-right">
+        <span class="drag-hint hint-pc">💡 ドラッグ or Shift+クリックで範囲選択</span>
+        <span class="drag-hint hint-sp">💡 スワイプで複数選択</span>
+        <span class="sel-info" id="selInfo">0枚選択中</span>
+      </div>
     </div>
 
     <div class="image-grid" id="imageGrid"></div>
@@ -408,6 +434,7 @@
     <div class="card action-bar" id="actionBar">
       <button class="btn btn-green" onclick="onSaveClick()">💾 ZIPで保存する</button>
       <button class="btn btn-blue"  onclick="onContinueClick()">➕ 収集を続ける</button>
+      <button class="btn btn-gray"  onclick="onResetClick()">🗑️ リセット</button>
     </div>
 
   </div><!-- /imageSection -->
@@ -650,6 +677,23 @@
       touchDragging = false; touchDragMode = null; touchStartId = null; touchDraggedIds.clear();
       grid.classList.remove('is-dragging');
     });
+  })();
+
+  /* ── Column picker ───────────────────────── */
+  function setCols(n) {
+    const grid = document.getElementById('imageGrid');
+    [2, 3, 4, 5].forEach(c => grid.classList.toggle(`cols-${c}`, c === n));
+    document.querySelectorAll('.col-btn').forEach(b =>
+      b.classList.toggle('active', parseInt(b.dataset.cols) === n)
+    );
+    try { localStorage.setItem('imgGridCols', n); } catch {}
+  }
+
+  // Init column count from localStorage or screen width
+  (function () {
+    const saved = parseInt(localStorage.getItem('imgGridCols') || '');
+    const def   = window.innerWidth < 480 ? 2 : window.innerWidth < 900 ? 3 : 4;
+    setCols([2, 3, 4, 5].includes(saved) ? saved : def);
   })();
 
   /* ── Boot ─────────────────────────────────── */
@@ -910,6 +954,21 @@
   function scrollToImgUrl() {
     document.getElementById('urlCard').scrollIntoView({behavior: 'smooth'});
     setTimeout(() => document.getElementById('urlInput').focus(), 400);
+  }
+
+  function onResetClick() {
+    if (!allImages.length) { toast('収集済みの画像がありません'); return; }
+    showModal('リセット',
+      `収集した <strong>${allImages.length}枚</strong> の画像をすべて削除します。<br>この操作は元に戻せません。`,
+      [
+        { text: '🗑️ リセットする', cls: 'btn-gray', action: () => {
+          allImages = []; sessionCount = 0; firstPageTitle = ''; lastClickedIdx = -1;
+          renderGrid(); refreshImgUI();
+          toast('リセットしました');
+        }},
+        { text: 'キャンセル', cls: 'btn-purple', action: () => {} },
+      ]
+    );
   }
 
   /* ════════════════════════════════
