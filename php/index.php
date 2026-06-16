@@ -563,6 +563,7 @@
 
   let allImages      = [];
   let sessionCount   = 0;
+  let firstPageTitle = '';
   let isDragging     = false;
   let dragMode       = null;
   let dragStartId    = null;
@@ -720,6 +721,7 @@
       if (!data.success) { showImgError(data.error || 'スクレイピングに失敗しました'); }
       else {
         sessionCount++;
+        if (sessionCount === 1 && data.page_title) firstPageTitle = data.page_title;
         allImages = [...allImages, ...data.images.map(img => ({...img, id: uid(), session: sessionCount, selected: false}))];
         renderGrid(); refreshImgUI();
         toast(`${data.images.length}枚の画像を収集しました`);
@@ -781,8 +783,10 @@
         document.getElementById('progressBarFill').style.width = p + '%';
         document.getElementById('progressCount').textContent   = `ZIP生成: ${p}%`;
       });
+      const rawTitle = firstPageTitle || 'scraped_images';
+      const zipName  = rawTitle.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 80) + '.zip';
       Object.assign(document.createElement('a'), {
-        href: URL.createObjectURL(zipBlob), download: 'scraped_images.zip'
+        href: URL.createObjectURL(zipBlob), download: zipName
       }).click();
       hideProgress();
       toast(`✅ ${okCount}枚の画像をZIPで保存しました`);
