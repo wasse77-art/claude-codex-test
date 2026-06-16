@@ -883,23 +883,81 @@
     setVideoLoading(false);
   }
 
-  function downloadSingleVideo(url, filename) {
-    const a = document.createElement('a');
-    a.href     = 'video_proxy.php?url=' + encodeURIComponent(url) + '&filename=' + encodeURIComponent(filename);
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  function formatBytes(b) {
+    if (b < 1024)        return b + ' B';
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+    return (b / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  async function downloadSingleVideo(url, filename, label) {
+    const proxyUrl = 'video_proxy.php?url=' + encodeURIComponent(url)
+                   + '&filename=' + encodeURIComponent(filename);
+
+    // Show progress overlay
+    document.getElementById('progressPhase').textContent    = label || `${filename} をダウンロード中...`;
+    document.getElementById('progressBarFill').style.width  = '0%';
+    document.getElementById('progressCount').textContent    = '接続中...';
+    document.getElementById('progressFilename').textContent = filename;
+    document.getElementById('progressOverlay').classList.add('active');
+
+    try {
+      const res = await fetch(proxyUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const contentLength = res.headers.get('content-length');
+      const total   = contentLength ? parseInt(contentLength, 10) : 0;
+      const reader  = res.body.getReader();
+      const chunks  = [];
+      let   received = 0;
+
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+
+        if (total > 0) {
+          const pct = Math.round((received / total) * 100);
+          document.getElementById('progressBarFill').style.width = pct + '%';
+          document.getElementById('progressCount').textContent   =
+            `${formatBytes(received)} / ${formatBytes(total)} (${pct}%)`;
+        } else {
+          // Content-Length unknown — show bytes received with moving bar
+          document.getElementById('progressBarFill').style.width = '100%';
+          document.getElementById('progressCount').textContent   =
+            `受信中: ${formatBytes(received)}`;
+        }
+      }
+
+      // Assemble blob and trigger download
+      const blob    = new Blob(chunks, {type: res.headers.get('content-type') || 'video/mp4'});
+      const blobUrl = URL.createObjectURL(blob);
+      const a = Object.assign(document.createElement('a'), {href: blobUrl, download: filename});
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+
+      hideProgress();
+      return true;
+    } catch (e) {
+      hideProgress();
+      toast('❌ ダウンロード失敗: ' + e.message);
+      return false;
+    }
   }
 
   async function downloadSelectedVideos() {
     const selected = allVideos.filter(v => v.selected);
     if (!selected.length) { toast('動画を1件以上選択してください'); return; }
-    toast(`${selected.length}件の動画をダウンロードします...`, 5000);
-    for (const video of selected) {
-      downloadSingleVideo(video.url, video.filename);
-      await new Promise(r => setTimeout(r, 1000));
+    const total = selected.length;
+    for (let i = 0; i < selected.length; i++) {
+      const video = selected[i];
+      const label = total > 1
+        ? `動画 ${i + 1} / ${total} をダウンロード中...`
+        : `${video.filename} をダウンロード中...`;
+      const ok = await downloadSingleVideo(video.url, video.filename, label);
+      if (!ok) break; // stop on error
     }
+    if (selected.length > 1) toast(`✅ ${selected.length}件の動画のダウンロードが完了しました`);
   }
 
   function addMoreVideos() {
