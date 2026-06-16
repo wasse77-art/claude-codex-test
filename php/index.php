@@ -256,9 +256,13 @@
     body.has-images,
     body.has-videos { padding-bottom: 90px; }
 
+    .hint-sp { display: none; }
+    @media (hover: none) {
+      .hint-pc { display: none; }
+      .hint-sp { display: inline; }
+    }
     @media (max-width: 640px) {
       .url-row { flex-direction: column; }
-      .drag-hint { display: none; }
     }
     @media (max-width: 480px) {
       header { padding: 14px 16px; }
@@ -389,7 +393,8 @@
         <input type="checkbox" id="selectAllChk" onchange="toggleSelectAll(this)">
         全て選択 / 全て解除
       </label>
-      <span class="drag-hint">💡 ドラッグ or Shift+クリックで範囲選択（PC）</span>
+      <span class="drag-hint hint-pc">💡 ドラッグ or Shift+クリックで範囲選択</span>
+      <span class="drag-hint hint-sp">💡 スワイプで複数選択</span>
       <span class="sel-info" id="selInfo">0枚選択中</span>
     </div>
 
@@ -570,6 +575,13 @@
   let draggedIds     = new Set();
   let lastClickedIdx = -1;
 
+  let touchDragging   = false;
+  let touchDragMode   = null;
+  let touchStartId    = null;
+  let touchDraggedIds = new Set();
+  let touchOnCard     = false;
+  let touchStartX = 0, touchStartY = 0;
+
   /* ── Drag: document-level handlers ──────────── */
   document.addEventListener('mousemove', e => {
     if (!isDragging) return;
@@ -588,6 +600,57 @@
     document.body.style.userSelect = '';
   });
   document.addEventListener('dragstart', e => e.preventDefault());
+
+  /* ── Touch swipe-select (mobile) ────────────── */
+  (function () {
+    const grid = document.getElementById('imageGrid');
+
+    grid.addEventListener('touchstart', e => {
+      const card = e.target.closest('.img-card');
+      if (!card) { touchOnCard = false; return; }
+      touchOnCard  = true;
+      touchStartX  = e.touches[0].clientX;
+      touchStartY  = e.touches[0].clientY;
+      touchStartId = card.id.slice(5);
+    }, {passive: true});
+
+    grid.addEventListener('touchmove', e => {
+      if (!touchOnCard || !e.touches.length) return;
+      const touch = e.touches[0];
+      if (!touchDragging) {
+        const dx   = touch.clientX - touchStartX;
+        const dy   = touch.clientY - touchStartY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 12) return;
+        // Clearly vertical movement → let the page scroll normally
+        if (Math.abs(dy) > Math.abs(dx) * 1.8 && Math.abs(dy) > 15) {
+          touchOnCard = false; return;
+        }
+        const img = allImages.find(i => i.id === touchStartId);
+        if (!img) return;
+        touchDragging = true;
+        touchDragMode = img.selected ? 'deselect' : 'select';
+        touchDraggedIds.clear(); touchDraggedIds.add(touchStartId);
+        toggleById(touchStartId, touchDragMode === 'select');
+        grid.classList.add('is-dragging');
+      }
+      e.preventDefault(); // block scroll while swiping to select
+      const el   = document.elementFromPoint(touch.clientX, touch.clientY);
+      const card = el && el.closest('.img-card');
+      if (!card) return;
+      const id = card.id.slice(5);
+      if (!id || touchDraggedIds.has(id)) return;
+      touchDraggedIds.add(id);
+      toggleById(id, touchDragMode === 'select');
+    }, {passive: false});
+
+    document.addEventListener('touchend', () => {
+      touchOnCard = false;
+      if (!touchDragging) return;
+      touchDragging = false; touchDragMode = null; touchStartId = null; touchDraggedIds.clear();
+      grid.classList.remove('is-dragging');
+    });
+  })();
 
   /* ── Boot ─────────────────────────────────── */
   document.getElementById('urlInput').addEventListener('keydown', e => {
