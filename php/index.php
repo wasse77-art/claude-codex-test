@@ -111,7 +111,7 @@
     .drag-hint { font-size: .78em; color: #a0aec0; }
     .controls-right { display: flex; align-items: center; gap: 12px; }
 
-    /* ── Column picker ───────────────────────── */
+    /* ── Column picker (mobile) ──────────────── */
     .col-picker { display: flex; align-items: center; gap: 4px; }
     .col-picker-label { font-size: .72em; color: #a0aec0; margin-right: 2px; white-space: nowrap; }
     .col-btn {
@@ -122,6 +122,25 @@
     }
     .col-btn.active { background: #667eea; border-color: #667eea; color: #fff; }
     .col-btn:hover:not(.active) { border-color: #667eea; color: #667eea; }
+
+    /* ── Zoom slider (PC) ────────────────────── */
+    .zoom-ctrl { display: none; align-items: center; gap: 7px; }
+    .zoom-slider {
+      width: 110px; accent-color: #667eea; cursor: pointer;
+      -webkit-appearance: none; appearance: none;
+      height: 4px; border-radius: 4px; background: #e2e8f0; outline: none;
+    }
+    .zoom-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 16px; height: 16px;
+      border-radius: 50%; background: #667eea; cursor: pointer;
+    }
+    .zoom-label { font-size: .72em; color: #718096; min-width: 28px; text-align: center; }
+
+    /* On pointer-fine (mouse) devices: swap col-picker for zoom slider */
+    @media (hover: hover) and (pointer: fine) {
+      .col-picker { display: none; }
+      .zoom-ctrl  { display: flex; }
+    }
 
     /* ── Image grid ──────────────────────────── */
     .image-grid {
@@ -417,6 +436,13 @@
         <button class="col-btn" data-cols="4" onclick="setCols(4)">4</button>
         <button class="col-btn" data-cols="5" onclick="setCols(5)">5</button>
       </div>
+      <div class="zoom-ctrl">
+        <span class="col-picker-label">表示:</span>
+        <button class="col-btn" onclick="adjustZoom(-1)" title="縮小">－</button>
+        <input type="range" id="zoomSlider" class="zoom-slider" min="1" max="9" step="1" value="5">
+        <button class="col-btn" onclick="adjustZoom(1)" title="拡大">＋</button>
+        <span class="zoom-label" id="zoomLabel"></span>
+      </div>
       <div class="controls-right">
         <span class="drag-hint hint-pc">💡 ドラッグ or Shift+クリックで範囲選択</span>
         <span class="drag-hint hint-sp">💡 スワイプで複数選択</span>
@@ -679,21 +705,51 @@
     });
   })();
 
-  /* ── Column picker ───────────────────────── */
+  /* ── Column picker (mobile) ──────────────── */
   function setCols(n) {
     const grid = document.getElementById('imageGrid');
+    grid.style.gridTemplateColumns = ''; // clear zoom inline style
     [2, 3, 4, 5].forEach(c => grid.classList.toggle(`cols-${c}`, c === n));
-    document.querySelectorAll('.col-btn').forEach(b =>
+    document.querySelectorAll('.col-btn[data-cols]').forEach(b =>
       b.classList.toggle('active', parseInt(b.dataset.cols) === n)
     );
     try { localStorage.setItem('imgGridCols', n); } catch {}
   }
 
-  // Init column count from localStorage or screen width
+  /* ── Zoom slider (PC) ────────────────────── */
+  // minmax sizes: step 1 = widest cards (fewest cols) … step 9 = smallest cards (most cols)
+  const ZOOM_STEPS = [340, 280, 240, 200, 170, 140, 110, 90, 70];
+  const ZOOM_LABELS = ['極大', '大', 'やや大', 'やや大', '標準', 'やや小', '小', '極小', '最小'];
+
+  function setZoom(step) {
+    step = Math.max(1, Math.min(ZOOM_STEPS.length, step));
+    const px   = ZOOM_STEPS[step - 1];
+    const grid = document.getElementById('imageGrid');
+    [2, 3, 4, 5].forEach(c => grid.classList.remove(`cols-${c}`));
+    grid.style.gridTemplateColumns = `repeat(auto-fill, minmax(${px}px, 1fr))`;
+    const slider = document.getElementById('zoomSlider');
+    const label  = document.getElementById('zoomLabel');
+    if (slider) slider.value = step;
+    if (label)  label.textContent = ZOOM_LABELS[step - 1];
+    try { localStorage.setItem('imgGridZoom', step); } catch {}
+  }
+  function adjustZoom(delta) {
+    const slider = document.getElementById('zoomSlider');
+    setZoom(parseInt(slider ? slider.value : 5) + delta);
+  }
+
+  document.getElementById('zoomSlider')?.addEventListener('input', e => setZoom(parseInt(e.target.value)));
+
+  // Init: PC uses zoom slider, touch devices use fixed columns
   (function () {
-    const saved = parseInt(localStorage.getItem('imgGridCols') || '');
-    const def   = window.innerWidth < 480 ? 2 : window.innerWidth < 900 ? 3 : 4;
-    setCols([2, 3, 4, 5].includes(saved) ? saved : def);
+    const isPC = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    if (isPC) {
+      const saved = parseInt(localStorage.getItem('imgGridZoom') || '');
+      setZoom(saved >= 1 && saved <= 9 ? saved : 5);
+    } else {
+      const saved = parseInt(localStorage.getItem('imgGridCols') || '');
+      setCols([2, 3, 4, 5].includes(saved) ? saved : 2);
+    }
   })();
 
   /* ── Boot ─────────────────────────────────── */
