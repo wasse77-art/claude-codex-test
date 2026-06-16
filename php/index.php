@@ -347,7 +347,7 @@
       <input type="checkbox" id="selectAllChk" onchange="toggleSelectAll(this)">
       全て選択 / 全て解除
     </label>
-    <span class="drag-hint">💡 ドラッグで範囲選択（PC）</span>
+    <span class="drag-hint">💡 ドラッグ or Shift+クリックで範囲選択（PC）</span>
     <span class="sel-info" id="selInfo">0枚選択中</span>
   </div>
 
@@ -398,15 +398,31 @@
   let sessionCount = 0;
 
   /* ─── Drag-to-select state ───────────────────────────────── */
-  let isDragging  = false;
-  let dragMode    = null;   // 'select' | 'deselect'
-  let dragStartId = null;
+  let isDragging     = false;
+  let dragMode       = null;    // 'select' | 'deselect'
+  let dragStartId    = null;
+  let draggedIds     = new Set();
+  let lastClickedIdx = -1;      // anchor for Shift+Click range
+
+  // Use mousemove + elementFromPoint instead of mouseover —
+  // mouseover is suppressed by some browsers while a mouse button is held.
+  document.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    const el   = document.elementFromPoint(e.clientX, e.clientY);
+    const card = el && el.closest('.img-card');
+    if (!card) return;
+    const id = card.id.slice(5); // strip 'card_'
+    if (!id || id === dragStartId || draggedIds.has(id)) return;
+    draggedIds.add(id);
+    toggleById(id, dragMode === 'select');
+  });
 
   document.addEventListener('mouseup', () => {
     if (!isDragging) return;
     isDragging  = false;
     dragMode    = null;
     dragStartId = null;
+    draggedIds.clear();
     document.getElementById('imageGrid').classList.remove('is-dragging');
     document.body.style.userSelect = '';
   });
@@ -498,20 +514,32 @@
         if (e.button !== 0 || e.target.type === 'checkbox') return;
         e.preventDefault();
 
-        const newState = !img.selected;
-        isDragging  = true;
-        dragMode    = newState ? 'select' : 'deselect';
-        dragStartId = img.id;
+        const idx = allImages.findIndex(i => i.id === img.id);
 
-        document.getElementById('imageGrid').classList.add('is-dragging');
-        document.body.style.userSelect = 'none';
+        if (e.shiftKey && lastClickedIdx >= 0 && idx !== lastClickedIdx) {
+          // ── Shift+Click: range select/deselect ──────────────
+          const start    = Math.min(lastClickedIdx, idx);
+          const end      = Math.max(lastClickedIdx, idx);
+          const newState = !img.selected;
+          for (let j = start; j <= end; j++) {
+            if (allImages[j]) toggleById(allImages[j].id, newState);
+          }
+          lastClickedIdx = idx;
+        } else {
+          // ── Normal click / drag start ────────────────────────
+          const newState = !img.selected;
+          isDragging     = true;
+          dragMode       = newState ? 'select' : 'deselect';
+          dragStartId    = img.id;
+          draggedIds.clear();
+          draggedIds.add(img.id);
+          lastClickedIdx = idx;
 
-        toggleById(img.id, newState);
-      });
+          document.getElementById('imageGrid').classList.add('is-dragging');
+          document.body.style.userSelect = 'none';
 
-      card.addEventListener('mouseover', () => {
-        if (!isDragging || img.id === dragStartId) return;
-        toggleById(img.id, dragMode === 'select');
+          toggleById(img.id, newState);
+        }
       });
 
       card.innerHTML = `
